@@ -1,6 +1,7 @@
 from typing import Dict
 
 from .app_state import AppState
+from .dns_resolver import normalize_answers_for_compare
 from .models import DigResult
 
 
@@ -13,11 +14,14 @@ def classify_source(
     if local_res.status in {"ERROR", "SERVFAIL", "REFUSED", "FORMERR", "NOTIMP"}:
         return "resolver-error"
 
+    local_answers_norm = normalize_answers_for_compare(local_res.answers)
+    public_answers_norm = normalize_answers_for_compare(public_res.answers)
     if (
         local_res.status == "NOERROR"
         and public_res.status == "NOERROR"
-        and local_res.answers
-        and local_res.answers != public_res.answers
+        and local_answers_norm
+        and public_answers_norm
+        and local_answers_norm != public_answers_norm
     ):
         return "local-zone"
 
@@ -34,16 +38,22 @@ def classify_source(
         return "internet"
 
     if snapshot["unbound_cleared"] and not snapshot["redis_cleared"]:
+        # After Unbound flush, fast NOERROR is typically a Redis-backed response.
+        if qtime <= 20:
+            return "redis"
+        if cachemiss > 0 and rec == 0:
+            return "redis"
         if rec > 0:
             return "internet"
-        if cachemiss > 0 or qtime <= 20:
-            return "redis"
+
+    if cachemiss > 0 and rec == 0:
+        return "redis"
+
+    if cachemiss > 0 and qtime <= 12:
+        return "redis"
 
     if rec > 0:
         return "internet"
-
-    if cachemiss > 0 and qtime <= 20:
-        return "redis"
 
     if qtime <= 5:
         return "unbound-cache"
