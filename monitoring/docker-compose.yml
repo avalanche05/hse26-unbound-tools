@@ -1,0 +1,73 @@
+# Запуск на Linux-ВМ в YC (не на Windows). Из каталога monitoring:
+#   docker compose up -d
+#
+# Перед стартом: задайте пароль Grafana в .env (см. .env.example).
+# Unbound exporter по умолчанию ожидается на хосте :9167 (см. prometheus.yml).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+  # Сетевой стек хоста: пробы DNS в 127.0.0.1:53 (ваш Unbound на localhost).
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./blackbox/blackbox.yml:/config/blackbox.yml:ro
+    command:
+      - "--config.file=/config/blackbox.yml"
+
+  # Метрики ОС; слушает на хосте :9100 — Prometheus достучится через host.docker.internal
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - "--path.rootfs=/host"
+
+  # Redis на 127.0.0.1:6379 — только с host network.
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      REDIS_ADDR: redis://127.0.0.1:6379
+      # REDIS_PASSWORD: "если нужен"
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,34 @@
+# Пример systemd для ВМ с Unbound и Unix-сокетом управления.
+# Скопируйте в /etc/systemd/system/unbound_exporter.service, поправьте пути и пользователя.
+#
+# Установка бинарника (вариант):
+#   go install github.com/letsencrypt/unbound_exporter@latest
+#   sudo cp ~/go/bin/unbound_exporter /usr/local/bin/
+#
+# Проверка сокета Unbound в unbound.conf:
+#   remote-control:
+#     control-enable: yes
+#     control-interface: /run/unbound.ctl
+#
+# Запуск:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now unbound_exporter
+
+[Unit]
+Description=Prometheus Unbound exporter
+After=network.target unbound.service
+
+[Service]
+Type=simple
+User=root
+# 0.0.0.0: Prometheus в Docker ходит на хост через host.docker.internal (не 127.0.0.1).
+# Не открывайте порт 9167 в группе безопасности YC наружу — только локально/внутри VPC.
+ExecStart=/usr/local/bin/unbound_exporter \
+  -unbound.host=unix:///run/unbound.ctl \
+  -unbound.ca "" \
+  -unbound.cert "" \
+  -web.listen-address=0.0.0.0:9167
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

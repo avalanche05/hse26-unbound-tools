@@ -1,0 +1,68 @@
+# Таймауты и интервал подправьте под нагрузку.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # node_exporter и redis_exporter в compose с network_mode: host
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+        labels:
+          instance: dns-vm
+
+  - job_name: redis
+    static_configs:
+      - targets: ["host.docker.internal:9121"]
+        labels:
+          instance: dns-vm
+
+  # Unbound: экспортёр удобнее запустить на хосте (доступ к control socket и правам).
+  # После установки unbound_exporter: curl -s 127.0.0.1:9167/metrics | head
+  - job_name: unbound
+    static_configs:
+      - targets: ["host.docker.internal:9167"]
+        labels:
+          instance: dns-vm
+
+  # Blackbox на host network слушает 9115 на интерфейсах хоста
+  - job_name: blackbox_dns
+    metrics_path: /probe
+    params:
+      module: [dns_unbound]
+    static_configs:
+      - targets:
+          # DNS-сервер для пробы (Unbound на той же ВМ)
+          - 127.0.0.1:53
+        labels:
+          probe_zone: resolver_health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: host.docker.internal:9115
+
+  # Пример второй пробы под stub-зону: раскомментируйте и замените имя и модуль.
+  # - job_name: blackbox_dns_stub
+  #   metrics_path: /probe
+  #   params:
+  #     module: [dns_stub_example]
+  #   static_configs:
+  #     - targets:
+  #         - 127.0.0.1:53
+  #       labels:
+  #         stub_zone: internal.example
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: host.docker.internal:9115
