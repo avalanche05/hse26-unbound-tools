@@ -1,0 +1,14 @@
+services:
+  dns-demo:
+    build: .
+    container_name: dns-demo
+    restart: always
+    network_mode: host
+    user: "0:0"
+    environment:
+      - TZ=UTC
+    volumes:
+      # Unbound control socket from host.
+      - /run/unbound.ctl:/run/unbound.ctl
+      # Optional: unbound config/certs for control utility.
+      - /etc/unbound:/etc/unbound:ro

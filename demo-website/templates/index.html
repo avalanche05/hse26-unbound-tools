@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Демонстрация DNS-резолвера</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --bg-soft: #101a2d;
+      --card: rgba(255, 255, 255, 0.06);
+      --card-border: rgba(255, 255, 255, 0.14);
+      --text: #e8eefc;
+      --muted: #a9b5d0;
+      --accent: #6ea8ff;
+      --accent-2: #8c6dff;
+      --ok: #2ec27e;
+      --warn: #f6c445;
+      --bad: #ff6a6a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 450px at 10% -10%, rgba(102, 157, 246, 0.28), transparent 55%),
+        radial-gradient(900px 450px at 100% 0%, rgba(148, 94, 255, 0.24), transparent 50%),
+        var(--bg);
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 18px 36px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-end;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      margin: 0;
+      font-size: clamp(28px, 4.2vw, 40px);
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--muted);
+      max-width: 720px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      padding: 7px 12px;
+      color: #d7e4ff;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      white-space: nowrap;
+    }
+
+    .panel {
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      background: var(--card);
+      backdrop-filter: blur(8px);
+      padding: 16px;
+      box-shadow: 0 12px 38px rgba(0, 0, 0, 0.28);
+    }
+
+    .control-row {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(280px, 1.7fr) 130px 150px;
+      align-items: center;
+    }
+
+    .admin-row {
+      margin-top: 12px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-row button {
+      height: 40px;
+      font-size: 13px;
+      font-weight: 600;
+      background: rgba(18, 28, 52, 0.75);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    input, select, button {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      font-size: 15px;
+      color: var(--text);
+      background: rgba(8, 12, 24, 0.45);
+      height: 44px;
+      padding: 0 12px;
+      outline: none;
+      transition: border-color 0.16s ease, transform 0.16s ease, background 0.16s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: rgba(110, 168, 255, 0.95);
+      background: rgba(8, 12, 24, 0.62);
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 700;
+      color: #eef4ff;
+      border-color: transparent;
+      background: linear-gradient(130deg, var(--accent), var(--accent-2));
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.75; cursor: default; transform: none; }
+
+    .error {
+      color: #ffc9c9;
+      margin-top: 10px;
+      min-height: 20px;
+      font-weight: 600;
+    }
+
+    .admin-msg {
+      margin-top: 10px;
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .cards {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .card-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .card-title h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #cbd8f8;
+      background: rgba(255, 255, 255, 0.05);
+      text-transform: lowercase;
+    }
+
+    .pill.ok { color: #b8ffd9; border-color: rgba(46, 194, 126, 0.45); }
+    .pill.warn { color: #ffe8b1; border-color: rgba(246, 196, 69, 0.45); }
+    .pill.bad { color: #ffc2c2; border-color: rgba(255, 106, 106, 0.45); }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(8, 12, 24, 0.45);
+      min-height: 72px;
+    }
+
+    .metric .k {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .metric .v {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.1;
+      color: #f1f5ff;
+      word-break: break-word;
+    }
+
+    .answer {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(8, 12, 24, 0.45);
+    }
+
+    .answer .k {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .mono {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      color: #d7e6ff;
+      word-break: break-word;
+    }
+
+    @media (max-width: 980px) {
+      .control-row {
+        grid-template-columns: 1fr;
+      }
+      .admin-row {
+        grid-template-columns: 1fr;
+      }
+      .cards {
+        grid-template-columns: 1fr;
+      }
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div>
+        <h1 class="title">Демонстрация DNS-резолвера</h1>
+        <p class="subtitle">
+          Сравнение ответов локального резолвера и 8.8.8.8
+        </p>
+      </div>
+      <span class="badge">Локальный: 127.0.0.1 · Сравнение: 8.8.8.8</span>
+    </header>
+
+    <section class="panel">
+      <div class="control-row">
+        <input id="domain" type="text" value="gov.ru" placeholder="Введите домен">
+        <select id="type" aria-label="Тип записи">
+          <option>A</option>
+          <option>AAAA</option>
+          <option>MX</option>
+          <option>TXT</option>
+        </select>
+        <button id="runBtn">Выполнить запрос</button>
+      </div>
+      <div class="admin-row">
+        <button id="flushUnboundBtn" type="button">Сбросить кэш Unbound</button>
+        <button id="flushRedisBtn" type="button">Сбросить кэш Redis</button>
+      </div>
+      <div id="error" class="error"></div>
+      <div id="admin-msg" class="admin-msg"></div>
+    </section>
+
+    <section class="cards">
+      <article class="panel">
+        <div class="card-title">
+          <h3>Локальный резолвер (127.0.0.1)</h3>
+          <span id="local-source-pill" class="pill">источник</span>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="k">Статус</div>
+            <div id="local-status" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">Время ответа</div>
+            <div id="local-time" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">TTL</div>
+            <div id="local-ttl" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">DNSSEC AD</div>
+            <div id="local-ad" class="v">-</div>
+          </div>
+          <div class="metric" style="grid-column: span 2;">
+            <div class="k">Источник</div>
+            <div id="local-source" class="v">-</div>
+          </div>
+        </div>
+        <div class="answer">
+          <div class="k">Ответ</div>
+          <pre id="local-answer" class="mono">-</pre>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="card-title">
+          <h3>DNS 8.8.8.8 (для сравнения)</h3>
+          <span id="google-status-pill" class="pill">статус</span>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="k">Статус</div>
+            <div id="g-status" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">Время ответа</div>
+            <div id="g-time" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">TTL</div>
+            <div id="g-ttl" class="v">-</div>
+          </div>
+          <div class="metric">
+            <div class="k">DNSSEC AD</div>
+            <div id="g-ad" class="v">-</div>
+          </div>
+        </div>
+        <div class="answer">
+          <div class="k">Ответ</div>
+          <pre id="g-answer" class="mono">-</pre>
+        </div>
+      </article>
+    </section>
+
+  </main>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    function setText(id, value) {
+      el(id).textContent = value ?? "-";
+    }
+
+    function fmtNullable(value, suffix = "") {
+      if (value === null || value === undefined || value === "") return "н/д";
+      return `${value}${suffix}`;
+    }
+
+    function fmtAnswers(answers) {
+      if (!answers || answers.length === 0) return "-";
+      return answers.join("\n");
+    }
+
+    function setPill(id, rawValue, mode = "status", displayValue = null) {
+      const node = el(id);
+      node.textContent = displayValue ?? rawValue ?? "-";
+      node.className = "pill";
+      const v = String(rawValue || "").toLowerCase();
+
+      if (mode === "source") {
+        if (v.includes("unbound-cache") || v.includes("redis")) node.classList.add("ok");
+        else if (v.includes("internet")) node.classList.add("warn");
+        else if (v.includes("local-zone")) node.classList.add("ok");
+        else if (v.includes("resolver-error")) node.classList.add("bad");
+        else node.classList.add("warn");
+        return;
+      }
+
+      if (v === "noerror") node.classList.add("ok");
+      else if (v === "nxdomain" || v === "servfail") node.classList.add("warn");
+      else node.classList.add("bad");
+    }
+
+    async function resolve() {
+      el("error").textContent = "";
+      el("admin-msg").textContent = "";
+      const domain = el("domain").value.trim();
+      const type = el("type").value;
+      if (!domain) {
+        el("error").textContent = "Нужно указать домен";
+        return;
+      }
+
+      const btn = el("runBtn");
+      btn.disabled = true;
+      btn.textContent = "Выполняется...";
+
+      try {
+        const res = await fetch("/api/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain, type })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          el("error").textContent = data.error || "Ошибка запроса";
+          return;
+        }
+
+        const local = data.local || {};
+        const g = data.google_8_8_8_8 || data.public || {};
+
+        setText("local-status", local.status);
+        setText("local-source", local.source ?? data.source ?? "-");
+        setText("local-ttl", fmtNullable(local.ttl));
+        setText("local-ad", local.ad_flag ? "да" : "нет");
+        setText("local-time", fmtNullable(local.query_time_ms, " ms"));
+        if (local.error) {
+          setText("local-answer", `Ошибка: ${local.error}`);
+        } else if (local.answer_text) {
+          setText("local-answer", local.answer_text);
+        } else {
+          setText("local-answer", fmtAnswers(local.answers));
+        }
+
+        setText("g-status", g.status);
+        setText("g-ttl", fmtNullable(g.ttl));
+        setText("g-ad", g.ad_flag ? "да" : "нет");
+        setText("g-time", fmtNullable(g.query_time_ms, " ms"));
+        if (g.error) {
+          setText("g-answer", `Ошибка: ${g.error}`);
+        } else if (g.answer_text) {
+          setText("g-answer", g.answer_text);
+        } else {
+          setText("g-answer", fmtAnswers(g.answers));
+        }
+
+        setPill("local-source-pill", local.source_code ?? data.source_key, "source", local.source ?? data.source);
+        setPill("google-status-pill", g.status, "status");
+
+        if (!data.meta?.unbound_stats_available) {
+          el("admin-msg").textContent = "Внимание: unbound-control недоступен, определение источника работает в упрощенном режиме.";
+        }
+      } catch (err) {
+        el("error").textContent = `Ошибка запроса: ${err}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Выполнить запрос";
+      }
+    }
+
+    async function adminAction(url, label) {
+      el("error").textContent = "";
+      el("admin-msg").textContent = "Выполняется...";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          el("admin-msg").textContent = `Ошибка: ${data.message || data.error || "операция не выполнена"}`;
+          return;
+        }
+        el("admin-msg").textContent = data.message || `${label}: выполнено`;
+      } catch (err) {
+        el("admin-msg").textContent = `Ошибка: ${err}`;
+      }
+    }
+
+    el("runBtn").addEventListener("click", resolve);
+    el("flushUnboundBtn").addEventListener("click", () => adminAction("/api/admin/flush-unbound", "Сброс кэша Unbound"));
+    el("flushRedisBtn").addEventListener("click", () => adminAction("/api/admin/flush-redis", "Сброс кэша Redis"));
+    el("domain").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") resolve();
+    });
+    resolve();
+  </script>
+</body>
+</html>
